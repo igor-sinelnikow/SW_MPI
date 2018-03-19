@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <omp.h>
 #include "wrapper.h"
 
 #include "sw.h"
@@ -42,10 +43,49 @@ char* read_query(const char* name, int L) {
 	return q;
 }
 
-uint max(int a, int b, int c, int d) {
+static uint max(int a, int b, int c, int d) {
 	int x = (a < b) ? b : a;
 	int y = (c < d) ? d : c;
 	return (x < y) ? y : x;
+}
+
+static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
+                         int height, int ofs, int width, int match,
+                         int mismatch, int gap) {
+	int up, diag, left;
+	uint max_score = 0;
+	double time = -MPI_Wtime();
+	#pragma omp parallel reduction(max:max_score)
+	{
+		int nthreads = omp_get_num_threads();
+		int threadnum = omp_get_thread_num();
+		int L = height/nthreads;
+		int begin = L*threadnum + 1;
+		int end = begin + L;
+		int j;
+		uint score;
+		for (int step = 0; step < width+nthreads-1; ++step) {
+			j = ofs + step - threadnum;
+			if (j >= ofs && j < ofs + width) {
+				for (int i = begin; i < end; ++i) {
+					up   = A(i-1, j ) + gap;
+					diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
+					left = A( i ,j-1) + gap;
+
+					A(i,j) = score = max(up,diag,left,0);
+					if (score > max_score)
+						max_score = score;
+				}
+			}
+			#pragma omp barrier
+		}
+	}
+	if (max_score > local_max[0]) {
+		local_max[0] = max_score;
+		// local_max[1] = i;
+		// local_max[2] = j;
+	}
+	return (time += MPI_Wtime());
 }
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
@@ -53,9 +93,7 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              int gap, int rank, int size) {
 	// time[5] = -MPI_Wtime();
 	int N = len_t/L, L_last = len_t%L;
-	int ofs, up, diag, left;
-	// double job;
-	uint score;
+	int ofs, width;
 	uint* A = (uint*) calloc((L+1)*(len_t+1),sizeof(uint));
 	if (A == NULL)
 		error(perror,"calloc");
@@ -63,37 +101,24 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
 	MPI_Request request = MPI_REQUEST_NULL;
 	// time[5] += MPI_Wtime();
 	time[0] = -MPI_Wtime();
-	for (int k = 0; k < ((L_last)?N+1:N); ++k) {
+	for (int k = 0; k < (L_last ? N+1 : N); ++k) {
 		ofs = k*L+1;
+		width = (k == N) ? L_last : L;
 		if (rank != 0)
 			// time[2] +=
-			MPIT_Recv(&A(0,ofs),(k==N)?L_last:L,MPI_UNSIGNED,rank-1,
-			                     0,MPI_COMM_WORLD,MPI_STATUS_IGNORE);
+			MPIT_Recv(&A(0,ofs),width,MPI_UNSIGNED,rank-1,0,MPI_COMM_WORLD,
+			          MPI_STATUS_IGNORE);
 
-		// job = -MPI_Wtime();
-		for (int i = 1; i <= L; ++i)
-			for (int j = ofs; j < ((k==N)?ofs+L_last:ofs+L); ++j) {
-				up   = A(i-1, j ) + gap;
-				diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
-				left = A( i ,j-1) + gap;
-
-				A(i,j) = score = max(up,diag,left,0);
-
-				if (score > local_max[0]) {
-					local_max[0] = score;
-					// local_max[1] = i;
-					// local_max[2] = j;
-				}
-			}
-		// time[1] += (job += MPI_Wtime());
+		// time[1] +=
+		fill_block(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
 
 		if (rank != size-1) {
 			if (request != MPI_REQUEST_NULL)
 				// time[3] +=
 				MPIT_Wait(&request,MPI_STATUS_IGNORE);
 			// time[4] +=
-			MPIT_Isend(&A(L,ofs),(k==N)?L_last:L,MPI_UNSIGNED,rank+1,
-			                      0,MPI_COMM_WORLD,&request);
+			MPIT_Isend(&A(L,ofs),width,MPI_UNSIGNED,rank+1,0,MPI_COMM_WORLD,
+			           &request);
 		}
 	}
 	time[0] += MPI_Wtime();
