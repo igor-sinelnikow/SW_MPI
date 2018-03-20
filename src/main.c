@@ -50,6 +50,7 @@ int main(int argc, char *argv[])
 	// time[6] = -MPI_Wtime();
 	uint* A = fill_similarity_matrix(local_max,time,t,q,len_t,L,match,mismatch,gap,rank,size);
 	// time[6] += MPI_Wtime();
+	MPI_Barrier(MPI_COMM_WORLD);
 
 	uint max_score;
 	MPI_Reduce(&local_max[0],&max_score,1,MPI_UNSIGNED,MPI_MAX,0,MPI_COMM_WORLD);
