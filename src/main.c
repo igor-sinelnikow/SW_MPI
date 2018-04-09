@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <mpi.h>
 #include <omp.h>
-
 #include "sw.h"
 
-static void print_usage(const char* program) {
+static void print_usage(const char* program)
+{
 	fprintf(stderr, "Usage:\n");
 	fprintf(stderr, "%s\n", program);
 	fprintf(stderr, "\t<target sequence file (prepared)>\n"); // argv[1]

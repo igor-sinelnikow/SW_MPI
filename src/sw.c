@@ -1,12 +1,16 @@
+#include "sw.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <mpi.h>
 #include <omp.h>
 #include "wrapper.h"
 
-#include "sw.h"
+#ifdef BLUEGENE
+#	define reduction(m)
+#endif
 
-void error(void (*func)(const char*), const char* str) {
+void error(void (*func)(const char*), const char* str)
+{
 	int rank;
 	MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 	if (rank == 0)
@@ -15,7 +19,8 @@ void error(void (*func)(const char*), const char* str) {
 	exit(EXIT_FAILURE);
 }
 
-char* read_target(const char* name, int len) {
+char* read_target(CONST char* name, int len)
+{
 	MPI_File fh_t;
 	MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_RDONLY,MPI_INFO_NULL,&fh_t);
 
@@ -29,7 +34,8 @@ char* read_target(const char* name, int len) {
 	return t;
 }
 
-char* read_query(const char* name, int L) {
+char* read_query(CONST char* name, int L)
+{
 	MPI_File fh_q;
 	MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_RDONLY,MPI_INFO_NULL,&fh_q);
 
@@ -43,7 +49,8 @@ char* read_query(const char* name, int L) {
 	return q;
 }
 
-static uint max(int a, int b, int c, int d) {
+static uint max(int a, int b, int c, int d)
+{
 	int x = (a < b) ? b : a;
 	int y = (c < d) ? d : c;
 	return (x < y) ? y : x;
@@ -51,8 +58,8 @@ static uint max(int a, int b, int c, int d) {
 
 static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
                          int height, int ofs, int width, int match,
-                         int mismatch, int gap) {
-	int up, diag, left;
+                         int mismatch, int gap)
+{
 	uint max_score = 0;
 	double time = -MPI_Wtime();
 	#pragma omp parallel reduction(max:max_score)
@@ -63,10 +70,11 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
 		int begin = L*threadnum + 1;
 		int end = begin + L;
 		int j;
+        int up, diag, left;
 		uint score;
 		for (int step = 0; step < width+nthreads-1; ++step) {
 			j = ofs + step - threadnum;
-			if (j >= ofs && j < ofs + width) {
+			if (j >= ofs && j < ofs + width)
 				for (int i = begin; i < end; ++i) {
 					up   = A(i-1, j ) + gap;
 					diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
@@ -76,9 +84,18 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
 					if (score > max_score)
 						max_score = score;
 				}
-			}
 			#pragma omp barrier
 		}
+#ifdef BLUEGENE
+		#pragma omp flush(max_score)
+		if (score > max_score) {
+			#pragma omp critical
+			{
+				if (score > max_score)
+					max_score = score;
+			}
+		}
+#endif
 	}
 	if (max_score > local_max[0]) {
 		local_max[0] = max_score;
@@ -90,7 +107,8 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              int len_t, int L, int match, int mismatch,
-                             int gap, int rank, int size) {
+                             int gap, int rank, int size)
+{
 	// time[5] = -MPI_Wtime();
 	int N = len_t/L, L_last = len_t%L;
 	int ofs, width;
@@ -125,7 +143,8 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
 	return A;
 }
 
-void save_matrix(uint* A, const char* name, int len_t, int L) {
+void save_matrix(uint* A, CONST char* name, int len_t, int L)
+{
 	MPI_File fh_A;
 	MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_CREATE|MPI_MODE_WRONLY,
 	               MPI_INFO_NULL,&fh_A);
@@ -136,7 +155,8 @@ void save_matrix(uint* A, const char* name, int len_t, int L) {
 	MPI_File_close(&fh_A);
 }
 /*
-int find_start(int local_max, int rank, int size) {
+int find_start(int local_max, int rank, int size)
+{
 	int errorcode;
 
 	int* maximums = (int*) malloc(size*sizeof(int));
@@ -159,7 +179,8 @@ int find_start(int local_max, int rank, int size) {
 /*
 int sticks_n_stars(char* sns, int local_start[], char* t, char* q,
                    int len_t, int L, int match, int mismatch, int gap,
-                   int rank, int size) {
+                   int rank, int size)
+{
 	int start = find_start(local_start[0],rank,size);
 	int k = 0;
 	if (rank != start) {

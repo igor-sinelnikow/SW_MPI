@@ -1,13 +1,15 @@
 CC := gcc
-MPICC := mpicc
-# MPICC := mpixlc
+MPICC := mpixlc_r
 
-FLAGS := -std=c99 -O3 -pedantic -Wall
-CFLAGS := $(FLAGS)
+OPT := -O3
+# OPT := -g
+FLAGS := $(OPT) -pedantic
+CFLAGS := -std=c99 $(FLAGS) -Wall
 MPIFLAGS := $(FLAGS)
+OMP := -qsmp=omp
+BG := -D BLUEGENE
 
-OBJ_DIR := obj
-OBJECTS := $(addprefix $(OBJ_DIR)/, wrapper.o sw.o main.o)
+OBJECTS := $(addprefix obj/, wrapper.o sw.o main.o)
 
 TARGET := simmtx
 ALIGN := align
@@ -16,26 +18,27 @@ PREP := prepare
 
 LEN1 := 125678
 LEN2 := 4096
-NPROC := 128
+NPROC := 32
+NTHREADS := 4
 K := 1
-OUTPUT := ./results/$(LEN1)x$(LEN2)_$(NPROC)_$(K).txt
+OUTPUT := $(LEN1)x$(LEN2)_$(NPROC)_$(NTHREADS)_$(K).txt
 
-all: make_dirs $(PREP) $(TARGET) # $(GEN) $(ALIGN)
+all: obj $(PREP) $(TARGET) # $(GEN) $(ALIGN)
 
 $(TARGET): $(OBJECTS)
-	$(MPICC) -O3 $^ -o $@
+	$(MPICC) $(OPT) $(OMP) $^ -o $@
 
-make_dirs:
-	mkdir -p $(OBJ_DIR) results
+obj:
+	mkdir -p $@
 
-$(OBJ_DIR)/wrapper.o: src/wrapper.c src/wrapper.h # Makefile
-	$(MPICC) $(MPIFLAGS) -c $< -o $@
+obj/wrapper.o: src/wrapper.c src/wrapper.h
+	$(MPICC) $(MPIFLAGS) $(BG) -c $< -o $@
 
-$(OBJ_DIR)/sw.o: src/sw.c src/wrapper.h src/sw.h # Makefile
-	$(MPICC) $(MPIFLAGS) -c $< -o $@
+obj/sw.o: src/sw.c src/wrapper.h src/sw.h
+	$(MPICC) $(MPIFLAGS) $(BG) $(OMP) -c $< -o $@
 
-$(OBJ_DIR)/main.o: src/main.c src/sw.h # Makefile
-	$(MPICC) $(MPIFLAGS) -c $< -o $@
+obj/main.o: src/main.c src/sw.h
+	$(MPICC) $(MPIFLAGS) $(OMP) -c $< -o $@
 
 $(PREP): src/prepare.c
 	$(CC) $(CFLAGS) $< -o $@
@@ -46,22 +49,20 @@ $(GEN): src/generate.c
 $(ALIGN): src/align.c
 	$(CC) $(CFLAGS) $< -o $@
 
-.PHONY: all make_dirs run clean cleanup archive
+.PHONY: all run clean cleanup archive
 
 run: $(PREP) $(TARGET) # $(ALIGN)
 	./prep2 $(LEN1) $(LEN2)
-	mpisubmit.bg -n $(NPROC) --stdout $(OUTPUT) $(TARGET) -- ../data/$(LEN1).target $(LEN1) ../data/$(LEN2).query $(LEN2) 2 -1 -2
+	mpisubmit.bg -n $(NPROC) --stdout $(OUTPUT) $(TARGET) -- ../data/$(LEN1).target $(LEN1) ../data/$(LEN2).query $(LEN2) 2 -1 -2 $(NTHREADS)
 # ../data/sim.mtx
 # ./$(ALIGN) ../data/sim.mtx ../data/seq.target 102400 ../data/seq.query 10240 2 -1 -2 > out.txt
 
 clean:
-	rm -f $(PREP) $(TARGET)
-# $(GEN) $(ALIGN)
-	rm -rf $(OBJ_DIR)
+	rm -f $(PREP) $(TARGET) $(GEN) $(ALIGN)
+	rm -rf obj
 
 cleanup: clean
 	rm -f ../data/*.target ../data/*.query
-	rm -rf results
 
 archive: cleanup
 	tar cz -C .. -f ../SW_MPI.tar.gz data/ SW_MPI/
