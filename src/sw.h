@@ -1,9 +1,9 @@
 #pragma once
 
 #ifndef BLUEGENE
-#	define CONST const
+#   define CONST const
 #else
-#	define CONST
+#   define CONST
 #endif
 
 #define A(x,y) A[(x)*(len_t+1) + (y)]

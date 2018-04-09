@@ -3,9 +3,9 @@
 #include <mpi.h>
 
 #ifndef BLUEGENE
-#	define CONST const
+#   define CONST const
 #else
-#	define CONST
+#   define CONST
 #endif
 
 void Abort(const char* file, int line, const char* call, int errorcode);

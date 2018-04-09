@@ -1,9 +1,9 @@
 CC := gcc
 MPICC := mpicc
 
-# OPT := -O3
-OPT := -g
-OPT += -Og
+OPT := -O3
+# OPT := -g
+# OPT += -Og
 FLAGS := -std=c99 $(OPT) -pedantic -Wall
 CFLAGS := $(FLAGS)
 MPIFLAGS := $(FLAGS)
@@ -18,8 +18,8 @@ PREP := prepare
 
 LEN1 := 8192
 LEN2 := 4096
-NPROC := 4
-NTHREADS := 1
+NPROC := 2
+NTHREADS := 2
 
 all: obj $(PREP) $(TARGET) # $(GEN) $(ALIGN)
 
