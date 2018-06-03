@@ -51,8 +51,9 @@ $(ALIGN): src/align.c
 .PHONY: all run clean cleanup archive
 
 run: $(PREP) $(TARGET) # $(ALIGN)
-	./prep2 $(LEN1) $(LEN2)
-	mpirun -np $(NPROC) ./$(TARGET) ../data/$(LEN1).target $(LEN1) ../data/$(LEN2).query $(LEN2) 2 -1 -2 $(NTHREADS)
+	./prep2.sh $(LEN1) $(LEN2)
+	export OMP_NUM_THREADS=$(NTHREADS)
+	mpirun -np $(NPROC) -x OMP_NUM_THREADS ./$(TARGET) ../data/$(LEN1).target $(LEN1) ../data/$(LEN2).query $(LEN2) 2 -1 -2
 # ../data/sim.mtx
 # ./$(ALIGN) ../data/sim.mtx ../data/seq.target 102400 ../data/seq.query 10240 2 -1 -2 > out.txt
 

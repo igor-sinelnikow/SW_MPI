@@ -15,8 +15,7 @@ static void print_usage(const char* program)
     fprintf(stderr, "\t<match>\n");                           // argv[5]
     fprintf(stderr, "\t<mismatch>\n");                        // argv[6]
     fprintf(stderr, "\t<gap>\n");                             // argv[7]
-    fprintf(stderr, "\t<nthreads>\n");                        // argv[8]
-    fprintf(stderr, "\t[similarity matrix file (output)]\n"); // argv[9]
+    fprintf(stderr, "\t[similarity matrix file (output)]\n"); // argv[8]
 }
 
 int main(int argc, char *argv[])
@@ -41,9 +40,6 @@ int main(int argc, char *argv[])
     int match = atoi(argv[5]);
     int mismatch = atoi(argv[6]);
     int gap = atoi(argv[7]);
-
-    int nthreads = atoi(argv[8]);
-    omp_set_num_threads(nthreads);
 
     uint local_max[1] = {0};
     double time[1] = {0.};
@@ -105,12 +101,16 @@ int main(int argc, char *argv[])
     }*/
 
     if (rank == 0) {
+        int nthreads;
+        #pragma omp parallel
+            nthreads = omp_get_num_threads();
+        printf("size = %d, nthreads = %d\n", size, nthreads);
         printf("%f\n", max_time);
         printf("maxValue = %u\n", max_score);
     }
 
-    if (argc > 9)
-        save_matrix(A,argv[9],len_t,L);
+    if (argc > 8)
+        save_matrix(A,argv[8],len_t,L);
 
     // char* sns = (char*) malloc((len_t+L)*sizeof(char));
     // int len_align = sticks_n_stars(sns,local_max,t,q,len_t,L,match,mismatch,gap,rank,size);
