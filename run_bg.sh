@@ -35,5 +35,23 @@ for (( i = 1; i <= 5; i++ )); do
             l=`llq -u ${user} | wc -l`
         done
         mpisubmit.bg -n ${p} ${wtime} --stdout results/${len1}x${len2}_${p}_${t}_${i}.txt simmtx -- ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2 ${t}
+
+        p=1024
+        wtime="-w 00:03:00"
+        l=`llq -u ${user} | wc -l`
+        while (( l-4 >= limit )); do
+            sleep 5
+            l=`llq -u ${user} | wc -l`
+        done
+        mpisubmit.bg -n ${p} ${wtime} --stdout results/${len1}x${len2}_${p}_${t}_${i}.txt simmtx -- ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2 ${t}
+
+        p=2048
+        wtime="-w 00:03:00"
+        l=`llq -u ${user} | wc -l`
+        while (( l-4 >= limit )); do
+            sleep 5
+            l=`llq -u ${user} | wc -l`
+        done
+        mpisubmit.bg -n ${p} ${wtime} --stdout results/${len1}x${len2}_${p}_${t}_${i}.txt simmtx -- ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2 ${t}
     done
 done
