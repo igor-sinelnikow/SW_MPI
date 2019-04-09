@@ -56,9 +56,9 @@ static uint max(int a, int b, int c, int d)
     return (x < y) ? y : x;
 }
 
-static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
-                         int height, int ofs, int width, int match,
-                         int mismatch, int gap)
+static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
+                             int len_t, int height, int ofs, int width,
+                             int match, int mismatch, int gap)
 {
     uint max_score = 0;
     double time = -MPI_Wtime();
@@ -105,6 +105,30 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
     return (time += MPI_Wtime());
 }
 
+static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
+                         int L, int ofs, int width, int match, int mismatch,
+                         int gap)
+{
+    int up, diag, left;
+    uint score;
+    double time = -MPI_Wtime();
+    for (int i = 1; i <= L; ++i)
+        for (int j = ofs; j < ofs+width; ++j) {
+            up   = A(i-1, j ) + gap;
+            diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
+            left = A( i ,j-1) + gap;
+
+            A(i,j) = score = max(up,diag,left,0);
+
+            if (score > local_max[0]) {
+                local_max[0] = score;
+                // local_max[1] = i;
+                // local_max[2] = j;
+            }
+        }
+    return (time += MPI_Wtime());
+}
+
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              int len_t, int L, int match, int mismatch,
                              int gap, int rank, int size)
@@ -128,6 +152,7 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                       MPI_STATUS_IGNORE);
 
         // time[1] +=
+        // fill_block_omp(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
         fill_block(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
 
         if (rank != size-1) {
