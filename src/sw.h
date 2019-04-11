@@ -6,21 +6,23 @@
 #   define CONST
 #endif
 
-#define A(x,y) A[(x)*(len_t+1) + (y)]
+#define A(x,y) A[(x) + (y)*(len_t+1)]
 
 typedef unsigned int uint;
 
-void error(void (*func)(const char*), const char* str);
+void error(void (*func)(const char*), const char* str) __attribute__((noreturn));
 
-char* read_target(CONST char* name, int len);
+void fatal(const char* message);
 
-char* read_query(CONST char* name, int L);
+char* read_target(CONST char* name, uint len);
+
+char* read_query(CONST char* name, uint L);
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
-                             int len_t, int L, int match, int mismatch,
+                             uint len_t, uint L, int match, int mismatch,
                              int gap, int rank, int size);
 
-void save_matrix(uint* A, CONST char* name, int len_t, int L);
+void save_matrix(uint* A, CONST char* name, uint len_t, uint L);
 
 // int find_start(int local_max, int rank, int size);
 /*

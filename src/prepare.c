@@ -38,7 +38,8 @@ int main(int argc, char const *argv[])
 	int limit = INT_MAX;
 	if (argc == 4)
 		limit = atoi(argv[3]);
-	// printf("%d\n", limit);
+
+	// TODO: считывать построчно
 
 	int c;
 	do {

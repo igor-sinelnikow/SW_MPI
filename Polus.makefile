@@ -1,9 +1,11 @@
 CC := xlc
 MPICC := mpixlc
 
+# OPT := -Og
 OPT := -O3 -qhot -qarch=pwr8 -qtune=pwr8:balanced
 CFLAGS := $(OPT)
 MPIFLAGS := $(OPT)
+# -g -pedantic -Wall
 OMP := -qsmp=omp
 
 OBJECTS := $(addprefix obj/, wrapper.o sw.o main.o)
@@ -13,16 +15,16 @@ ALIGN := align
 GEN := generate
 PREP := prepare
 
-len1 := 125678
-len2 := 4096
-mpi_tasks := 20
+len1 := 20
+len2 := 20
+mpi_tasks := 5
 num_threads_per_task := 8
 smt_mode := 8
 cpus_per_core := 8
 task_dist := pack
 # queue := -q "normal"
 
-all: obj $(PREP) $(TARGET) # $(GEN) $(ALIGN)
+all: obj $(PREP) $(TARGET) $(ALIGN) # $(GEN)
 
 $(TARGET): $(OBJECTS)
 	$(MPICC) $(OPT) $(OMP) $^ -o $@
@@ -50,12 +52,13 @@ $(ALIGN): src/align.c
 
 .PHONY: all run clean cleanup archive
 
-run: $(TARGET) $(PREP) # $(ALIGN)
+run: $(TARGET) $(PREP) $(ALIGN)
 	./prep2.sh $(len1) $(len2)
-	bsub -n $(mpi_tasks) -a "p8aff($(num_threads_per_task),$(smt_mode),$(cpus_per_core),$(task_dist))" -R "select[maxmem==256G] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.%J.out -e $<.%J.err -J "SW_MPI" mpiexec ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
-# ../data/sim.mtx
-# mpisubmit.pl -p $(mpi_tasks) -t $(num_threads_per_task) -d ./$< -- ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 > SW_MPI.lsf
-# ./$(ALIGN) ../data/sim.mtx ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 > out.txt
+# 	valgrind --leak-check=full
+	mpirun -np $(mpi_tasks) ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 ../data/sim.mtx
+	./$(ALIGN) ../data/sim.mtx ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
+# 	bsub -n $(mpi_tasks) -a "p8aff($(num_threads_per_task),$(smt_mode),$(cpus_per_core),$(task_dist))" -R "select[maxmem==256G] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.%J.out -e $<.%J.err -J "SW_MPI" mpiexec ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
+# 	mpisubmit.pl -p $(mpi_tasks) -t $(num_threads_per_task) -d ./$< -- ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 > SW_MPI.lsf
 
 clean:
 	rm -f $(TARGET) $(PREP) $(GEN) $(ALIGN)

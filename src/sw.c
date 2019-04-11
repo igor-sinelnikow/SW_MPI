@@ -19,7 +19,12 @@ void error(void (*func)(const char*), const char* str)
     exit(EXIT_FAILURE);
 }
 
-char* read_target(CONST char* name, int len)
+void fatal(const char* message)
+{
+    fprintf(stderr, "%s\n", message);
+}
+
+char* read_target(CONST char* name, uint len)
 {
     MPI_File fh_t;
     MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_RDONLY,MPI_INFO_NULL,&fh_t);
@@ -34,7 +39,7 @@ char* read_target(CONST char* name, int len)
     return t;
 }
 
-char* read_query(CONST char* name, int L)
+char* read_query(CONST char* name, uint L)
 {
     MPI_File fh_q;
     MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_RDONLY,MPI_INFO_NULL,&fh_q);
@@ -49,10 +54,13 @@ char* read_query(CONST char* name, int L)
     return q;
 }
 
-static uint max(int a, int b, int c, int d)
+#define min(x,y) (((x)<(y))?(x):(y))
+#define max(x,y) (((x)<(y))?(y):(x))
+
+static uint max4(int a, int b, int c, int d)
 {
-    int x = (a < b) ? b : a;
-    int y = (c < d) ? d : c;
+    int x = max(a, b);
+    int y = max(c, d);
     return (x < y) ? y : x;
 }
 
@@ -80,7 +88,7 @@ static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
                     diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
                     left = A( i ,j-1) + gap;
 
-                    A(i,j) = score = max(up,diag,left,0);
+                    A(i,j) = score = max4(up,diag,left,0);
                     if (score > max_score)
                         max_score = score;
                 }
@@ -105,20 +113,20 @@ static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
     return (time += MPI_Wtime());
 }
 
-static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
-                         int L, int ofs, int width, int match, int mismatch,
-                         int gap)
+static double fill_block_orig(uint local_max[], uint* A, char* t, char* q,
+                              uint len_t, uint L, uint ofs, uint width,
+                              int match, int mismatch, int gap)
 {
     int up, diag, left;
     uint score;
     double time = -MPI_Wtime();
-    for (int i = 1; i <= L; ++i)
-        for (int j = ofs; j < ofs+width; ++j) {
-            up   = A(i-1, j ) + gap;
-            diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
-            left = A( i ,j-1) + gap;
+    for (int j = 1; j <= L; ++j)
+        for (int i = ofs; i < ofs+width; ++i) {
+            up   = A( i ,j-1) + gap;
+            diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
+            left = A(i-1, j ) + gap;
 
-            A(i,j) = score = max(up,diag,left,0);
+            A(i,j) = score = max4(up,diag,left,0);
 
             if (score > local_max[0]) {
                 local_max[0] = score;
@@ -129,38 +137,109 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q, int len_t,
     return (time += MPI_Wtime());
 }
 
+static uint elementsOnDiag(uint d, uint width, uint height)
+{
+    if (d <= width && d <= height)
+        return d;
+    if (d <= max(width, height))
+        return min(width, height);
+    if (d <= width + height - 1)
+        return width + height - d;
+    return 0;
+}
+
+static uint col(uint d, uint e, uint width, uint height)
+{
+    uint x;
+    if (d <= width && d <= height)
+        x = d;
+    else if (d <= max(width, height))
+        x = (width < height) ? width : d;
+    else if (d <= width + height - 1)
+        x = width;
+    else
+        error(fatal,"sw.c:161: Too many diagonals in a matrix");
+    return x - e;
+}
+
+static uint row(uint d, uint e, uint width, uint height)
+{
+    uint y;
+    if (d <= width && d <= height)
+        y = 1;
+    else if (d <= max(width, height))
+        y = (width < height) ? d-width+1 : 1;
+    else if (d <= width + height - 1)
+        y = d - width + 1;
+    else
+        error(fatal,"sw.c:175: Too many diagonals in a matrix");
+    return y + e;
+}
+
+static double fill_block(uint local_max[], uint* A, char* t, char* q,
+                         uint len_t, uint height, uint offset, uint width,
+                         int match, int mismatch, int gap)
+{
+    int up, diag, left;
+    uint i, j, score;
+    const uint nDiag = width + height - 1;
+    double time = -MPI_Wtime();
+    for (uint d = 1; d <= nDiag; ++d) {
+        for (uint e = 0; e < elementsOnDiag(d,width,height); ++e) {
+            i = col(d,e,width,height) + offset;
+            j = row(d,e,width,height);
+
+            // printf("(%u,%u) ", i, j);
+
+            up   = A( i ,j-1) + gap;
+            diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
+            left = A(i-1, j ) + gap;
+
+            A(i,j) = score = max4(up,diag,left,0);
+
+            if (score > local_max[0]) {
+                local_max[0] = score;
+                // local_max[1] = i;
+                // local_max[2] = j;
+            }
+        }
+        // putchar('\n');
+    }
+    return (time += MPI_Wtime());
+}
+
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
-                             int len_t, int L, int match, int mismatch,
+                             uint len_t, uint L, int match, int mismatch,
                              int gap, int rank, int size)
 {
     // time[5] = -MPI_Wtime();
-    int N = len_t/L, L_last = len_t%L;
-    int ofs, width;
-    uint* A = (uint*) calloc((L+1)*(len_t+1),sizeof(uint));
+    uint N = len_t/L, L_last = len_t%L;
+    uint ofs, width;
+    uint* A = (uint*) calloc((len_t+1)*(L+1),sizeof(uint));
     if (A == NULL)
         error(perror,"calloc");
 
     MPI_Request request = MPI_REQUEST_NULL;
     // time[5] += MPI_Wtime();
     time[0] = -MPI_Wtime();
-    for (int k = 0; k < (L_last ? N+1 : N); ++k) {
-        ofs = k*L+1;
+    for (uint k = 0; k < (L_last ? N+1 : N); ++k) {
+        ofs = 1+k*L;
         width = (k == N) ? L_last : L;
         if (rank != 0)
             // time[2] +=
-            MPIT_Recv(&A(0,ofs),width,MPI_UNSIGNED,rank-1,0,MPI_COMM_WORLD,
+            MPIT_Recv(&A(ofs,0),width,MPI_UNSIGNED,rank-1,0,MPI_COMM_WORLD,
                       MPI_STATUS_IGNORE);
 
         // time[1] +=
         // fill_block_omp(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
-        fill_block(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
+        fill_block(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
 
         if (rank != size-1) {
             if (request != MPI_REQUEST_NULL)
                 // time[3] +=
                 MPIT_Wait(&request,MPI_STATUS_IGNORE);
             // time[4] +=
-            MPIT_Isend(&A(L,ofs),width,MPI_UNSIGNED,rank+1,0,MPI_COMM_WORLD,
+            MPIT_Isend(&A(ofs,L),width,MPI_UNSIGNED,rank+1,0,MPI_COMM_WORLD,
                        &request);
         }
     }
@@ -168,13 +247,13 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
     return A;
 }
 
-void save_matrix(uint* A, CONST char* name, int len_t, int L)
+void save_matrix(uint* A, CONST char* name, uint len_t, uint L)
 {
     MPI_File fh_A;
     MPIE_File_open(MPI_COMM_WORLD,name,MPI_MODE_CREATE|MPI_MODE_WRONLY,
                    MPI_INFO_NULL,&fh_A);
 
-    MPIE_File_write_ordered(fh_A,&A(1,0),L*(len_t+1),MPI_UNSIGNED,
+    MPIE_File_write_ordered(fh_A,&A(0,1),L*(len_t+1),MPI_UNSIGNED,
                             MPI_STATUS_IGNORE);
 
     MPI_File_close(&fh_A);
@@ -215,6 +294,7 @@ int sticks_n_stars(char* sns, int local_start[], char* t, char* q,
     }
     int i = local_start[1];
     int j = local_start[2];
+    // TODO: проверить i и j, потому что в макросе поменял местами
     while (((i > 0) || (j > 0)) && (A(i,j) > 0)) {
         if ((i > 0) && (A(i,j) == A(i-1,j)+gap)) {
             sns[k] = '*';
