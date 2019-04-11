@@ -15,12 +15,12 @@ ALIGN := align
 GEN := generate
 PREP := prepare
 
-len1 := 20
-len2 := 20
+len1 := 30
+len2 := 30
 mpi_tasks := 5
-num_threads_per_task := 8
-smt_mode := 8
-cpus_per_core := 8
+num_threads_per_task := 4
+# smt_mode := 8
+# cpus_per_core := 8
 task_dist := pack
 # queue := -q "normal"
 
@@ -54,10 +54,11 @@ $(ALIGN): src/align.c
 
 run: $(TARGET) $(PREP) $(ALIGN)
 	./prep2.sh $(len1) $(len2)
+	bsub -n $(mpi_tasks) -a "p8aff($(num_threads_per_task),$(smt_mode),$(cpus_per_core),$(task_dist))" -R "select[type==any] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.%J.out -e $<.%J.err -J "SW_MPI" mpiexec ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 ../data/sim.mtx
+# 	OMP_DISPLAY_ENV=VERBOSE OMP_DYNAMIC=FALSE OMP_SCHEDULE=STATIC OMP_NUM_THREADS=$(num_threads_per_task) mpirun -np $(mpi_tasks) ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 ../data/sim.mtx
+# 	maxmem==256G
 # 	valgrind --leak-check=full
-	mpirun -np $(mpi_tasks) ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 ../data/sim.mtx
-	./$(ALIGN) ../data/sim.mtx ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
-# 	bsub -n $(mpi_tasks) -a "p8aff($(num_threads_per_task),$(smt_mode),$(cpus_per_core),$(task_dist))" -R "select[maxmem==256G] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.%J.out -e $<.%J.err -J "SW_MPI" mpiexec ./$< ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
+# 	./$(ALIGN) ../data/sim.mtx ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2
 # 	mpisubmit.pl -p $(mpi_tasks) -t $(num_threads_per_task) -d ./$< -- ../data/$(len1).target $(len1) ../data/$(len2).query $(len2) 2 -1 -2 > SW_MPI.lsf
 
 clean:

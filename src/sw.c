@@ -5,10 +5,6 @@
 #include <omp.h>
 #include "wrapper.h"
 
-#ifdef BLUEGENE
-#   define reduction(m)
-#endif
-
 void error(void (*func)(const char*), const char* str)
 {
     int rank;
@@ -64,79 +60,6 @@ static uint max4(int a, int b, int c, int d)
     return (x < y) ? y : x;
 }
 
-static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
-                             int len_t, int height, int ofs, int width,
-                             int match, int mismatch, int gap)
-{
-    uint max_score = 0;
-    double time = -MPI_Wtime();
-    #pragma omp parallel reduction(max:max_score)
-    {
-        int nthreads = omp_get_num_threads();
-        int threadnum = omp_get_thread_num();
-        int L = height/nthreads;
-        int begin = L*threadnum + 1;
-        int end = begin + L;
-        int j;
-        int up, diag, left;
-        uint score;
-        for (int step = 0; step < width+nthreads-1; ++step) {
-            j = ofs + step - threadnum;
-            if (j >= ofs && j < ofs + width)
-                for (int i = begin; i < end; ++i) {
-                    up   = A(i-1, j ) + gap;
-                    diag = A(i-1,j-1) + ((q[i-1] == t[j-1]) ? match : mismatch);
-                    left = A( i ,j-1) + gap;
-
-                    A(i,j) = score = max4(up,diag,left,0);
-                    if (score > max_score)
-                        max_score = score;
-                }
-            #pragma omp barrier
-        }
-#ifdef BLUEGENE
-        #pragma omp flush(max_score)
-        if (score > max_score) {
-            #pragma omp critical
-            {
-                if (score > max_score)
-                    max_score = score;
-            }
-        }
-#endif
-    }
-    if (max_score > local_max[0]) {
-        local_max[0] = max_score;
-        // local_max[1] = i;
-        // local_max[2] = j;
-    }
-    return (time += MPI_Wtime());
-}
-
-static double fill_block_orig(uint local_max[], uint* A, char* t, char* q,
-                              uint len_t, uint L, uint ofs, uint width,
-                              int match, int mismatch, int gap)
-{
-    int up, diag, left;
-    uint score;
-    double time = -MPI_Wtime();
-    for (int j = 1; j <= L; ++j)
-        for (int i = ofs; i < ofs+width; ++i) {
-            up   = A( i ,j-1) + gap;
-            diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
-            left = A(i-1, j ) + gap;
-
-            A(i,j) = score = max4(up,diag,left,0);
-
-            if (score > local_max[0]) {
-                local_max[0] = score;
-                // local_max[1] = i;
-                // local_max[2] = j;
-            }
-        }
-    return (time += MPI_Wtime());
-}
-
 static uint elementsOnDiag(uint d, uint width, uint height)
 {
     if (d <= width && d <= height)
@@ -158,7 +81,7 @@ static uint col(uint d, uint e, uint width, uint height)
     else if (d <= width + height - 1)
         x = width;
     else
-        error(fatal,"sw.c:161: Too many diagonals in a matrix");
+        error(fatal,"sw.c:84: Too many diagonals in a matrix");
     return x - e;
 }
 
@@ -172,25 +95,51 @@ static uint row(uint d, uint e, uint width, uint height)
     else if (d <= width + height - 1)
         y = d - width + 1;
     else
-        error(fatal,"sw.c:175: Too many diagonals in a matrix");
+        error(fatal,"sw.c:98: Too many diagonals in a matrix");
     return y + e;
 }
 
-static double fill_block(uint local_max[], uint* A, char* t, char* q,
-                         uint len_t, uint height, uint offset, uint width,
-                         int match, int mismatch, int gap)
+static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
+                             uint len_t, uint height, uint offset, uint width,
+                             int match, int mismatch, int gap)
 {
     int up, diag, left;
-    uint i, j, score;
+    uint i, j, score, max_score = 0;
     const uint nDiag = width + height - 1;
     double time = -MPI_Wtime();
+    #pragma omp parallel private(up,diag,left,i,j,score)
     for (uint d = 1; d <= nDiag; ++d) {
+        #pragma omp for reduction(max:max_score)
         for (uint e = 0; e < elementsOnDiag(d,width,height); ++e) {
             i = col(d,e,width,height) + offset;
             j = row(d,e,width,height);
 
-            // printf("(%u,%u) ", i, j);
+            up   = A( i ,j-1) + gap;
+            diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
+            left = A(i-1, j ) + gap;
 
+            A(i,j) = score = max4(up,diag,left,0);
+            if (score > max_score)
+                max_score = score;
+        }
+        if (max_score > local_max[0]) {
+            local_max[0] = max_score;
+            // local_max[1] = i;
+            // local_max[2] = j;
+        }
+    }
+    return (time += MPI_Wtime());
+}
+
+static double fill_block(uint local_max[], uint* A, char* t, char* q,
+                         uint len_t, uint L, uint ofs, uint width,
+                         int match, int mismatch, int gap)
+{
+    int up, diag, left;
+    uint score;
+    double time = -MPI_Wtime();
+    for (int j = 1; j <= L; ++j)
+        for (int i = ofs; i < ofs+width; ++i) {
             up   = A( i ,j-1) + gap;
             diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
             left = A(i-1, j ) + gap;
@@ -203,8 +152,6 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q,
                 // local_max[2] = j;
             }
         }
-        // putchar('\n');
-    }
     return (time += MPI_Wtime());
 }
 
@@ -231,8 +178,8 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                       MPI_STATUS_IGNORE);
 
         // time[1] +=
-        // fill_block_omp(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
-        fill_block(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        fill_block_omp(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        // fill_block(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
 
         if (rank != size-1) {
             if (request != MPI_REQUEST_NULL)
