@@ -30,22 +30,22 @@ int main(int argc, char *argv[])
     if (argc < 8)
         error(print_usage,argv[0]);
 
-    uint len_t = atoi(argv[2]);
+    const uint len_t = atoi(argv[2]);
     char* t = read_target(argv[1],len_t);
 
     // TODO: если длина query не делится нацело на size, то перед
     // MPIE_File_read_ordered дополнять последовательность до нужного размера
-    uint len_q = atoi(argv[4]);
+    const uint len_q = atoi(argv[4]);
     if (len_q % size)
         error(fatal,"Query sequence length does not divide evenly "
                     "by the number of MPI processes. Can't handle "
                     "this yet, results may be wrong. Aborting...");
-    uint L = len_q/size;
+    const uint L = len_q/size;
     char* q = read_query(argv[3],L);
 
-    int match = atoi(argv[5]);
-    int mismatch = atoi(argv[6]);
-    int gap = atoi(argv[7]);
+    const int match = atoi(argv[5]);
+    const int mismatch = atoi(argv[6]);
+    const int gap = atoi(argv[7]);
 
     uint local_max[1] = {0};
     double time[1] = {0.};

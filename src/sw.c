@@ -132,14 +132,14 @@ static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
 }
 
 static double fill_block(uint local_max[], uint* A, char* t, char* q,
-                         uint len_t, uint L, uint ofs, uint width,
+                         uint len_t, uint height, uint offset, uint width,
                          int match, int mismatch, int gap)
 {
     int up, diag, left;
     uint score;
     double time = -MPI_Wtime();
-    for (int j = 1; j <= L; ++j)
-        for (int i = ofs; i < ofs+width; ++i) {
+    for (int j = 1; j <= height; ++j)
+        for (int i = offset; i < offset+width; ++i) {
             up   = A( i ,j-1) + gap;
             diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
             left = A(i-1, j ) + gap;
@@ -160,7 +160,7 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              int gap, int rank, int size)
 {
     // time[5] = -MPI_Wtime();
-    uint N = len_t/L, L_last = len_t%L;
+    const uint N = len_t/L, L_last = len_t%L;
     uint ofs, width;
     uint* A = (uint*) calloc((len_t+1)*(L+1),sizeof(uint));
     if (A == NULL)
