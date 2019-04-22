@@ -30,6 +30,16 @@ int main(int argc, char *argv[])
     if (argc < 8)
         error(print_usage,argv[0]);
 
+    const int ndev = omp_get_num_devices();
+    omp_set_default_device(rank % ndev);
+
+    if (rank == 0) {
+        int nthreads;
+        #pragma omp parallel
+            nthreads = omp_get_num_threads();
+        printf("size = %d, nthreads = %d, ndevices = %d\n", size, nthreads, ndev);
+    }
+
     const uint len_t = atoi(argv[2]);
     char* t = read_target(argv[1],len_t);
 
@@ -107,10 +117,6 @@ int main(int argc, char *argv[])
     }*/
 
     if (rank == 0) {
-        int nthreads;
-        #pragma omp parallel
-            nthreads = omp_get_num_threads();
-        printf("size = %d, nthreads = %d\n", size, nthreads);
         printf("%f\n", max_time);
         printf("maxValue = %u\n", max_score);
     }
@@ -125,6 +131,9 @@ int main(int argc, char *argv[])
     // char* align_q = (char*) malloc((len_t+L)*sizeof(char));
     // align(align_t,align_q,local_max,t,q,len_t,L,rank,size);
 
+    #pragma omp target exit data map(delete: t[0:len_t])
+    #pragma omp target exit data map(delete: q[0:L])
+    #pragma omp target exit data map(delete: A[:(len_t+1)*(L+1)])
     free(t);
     free(q);
     free(A);

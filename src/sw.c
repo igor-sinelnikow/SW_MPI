@@ -2,7 +2,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <omp.h>
 #include "wrapper.h"
 
 void error(void (*func)(const char*), const char* str)
@@ -32,6 +31,7 @@ char* read_target(CONST char* name, uint len)
     MPIE_File_read(fh_t,t,len,MPI_CHAR,MPI_STATUS_IGNORE);
 
     MPI_File_close(&fh_t);
+    #pragma omp target enter data map(to: t[0:len])
     return t;
 }
 
@@ -47,6 +47,7 @@ char* read_query(CONST char* name, uint L)
     MPIE_File_read_ordered(fh_q,q,L,MPI_CHAR,MPI_STATUS_IGNORE);
 
     MPI_File_close(&fh_q);
+    #pragma omp target enter data map(to: q[0:L])
     return q;
 }
 
@@ -71,7 +72,7 @@ static uint elementsOnDiag(uint d, uint width, uint height)
     return 0;
 }
 
-static uint col(uint d, uint e, uint width, uint height)
+static int col(uint d, uint e, uint width, uint height)
 {
     uint x;
     if (d <= width && d <= height)
@@ -81,11 +82,11 @@ static uint col(uint d, uint e, uint width, uint height)
     else if (d <= width + height - 1)
         x = width;
     else
-        error(fatal,"sw.c:84: Too many diagonals in a matrix");
+        return -1;
     return x - e;
 }
 
-static uint row(uint d, uint e, uint width, uint height)
+static int row(uint d, uint e, uint width, uint height)
 {
     uint y;
     if (d <= width && d <= height)
@@ -95,16 +96,17 @@ static uint row(uint d, uint e, uint width, uint height)
     else if (d <= width + height - 1)
         y = d - width + 1;
     else
-        error(fatal,"sw.c:98: Too many diagonals in a matrix");
+        return -1;
     return y + e;
 }
 
-static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
+/*static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
                              uint len_t, uint height, uint offset, uint width,
                              int match, int mismatch, int gap)
 {
     int up, diag, left;
-    uint i, j, score, max_score = 0;
+    int i, j;
+    uint score, max_score = 0;
     const uint nDiag = width + height - 1;
     double time = -MPI_Wtime();
     #pragma omp parallel private(up,diag,left,i,j,score)
@@ -129,11 +131,45 @@ static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
         }
     }
     return (time += MPI_Wtime());
-}
+}*/
 
 static double fill_block(uint local_max[], uint* A, char* t, char* q,
                          uint len_t, uint height, uint offset, uint width,
                          int match, int mismatch, int gap)
+{
+    int up, diag, left;
+    int i, j;
+    uint score, max_score = 0;
+    const uint nDiag = width + height - 1;
+    double time = -MPI_Wtime();
+    for (uint d = 1; d <= nDiag; ++d) {
+        #pragma omp target teams distribute parallel for \
+                private(up,diag,left,i,j,score) reduction(max:max_score)
+        for (uint e = 0; e < elementsOnDiag(d,width,height); ++e) {
+            i = col(d,e,width,height) + offset;
+            j = row(d,e,width,height);
+
+            up   = A( i ,j-1) + gap;
+            diag = A(i-1,j-1) + ((t[i-1] == q[j-1]) ? match : mismatch);
+            left = A(i-1, j ) + gap;
+
+            A(i,j) = score = max4(up,diag,left,0);
+            if (score > max_score)
+                max_score = score;
+        }
+    }
+    time += MPI_Wtime();
+    if (max_score > local_max[0]) {
+        local_max[0] = max_score;
+        // local_max[1] = i;
+        // local_max[2] = j;
+    }
+    return time;
+}
+
+/*static double fill_block_cpu(uint local_max[], uint* A, char* t, char* q,
+                             uint len_t, uint height, uint offset, uint width,
+                             int match, int mismatch, int gap)
 {
     int up, diag, left;
     uint score;
@@ -153,7 +189,7 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q,
             }
         }
     return (time += MPI_Wtime());
-}
+}*/
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              uint len_t, uint L, int match, int mismatch,
@@ -165,6 +201,7 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
     uint* A = (uint*) calloc((len_t+1)*(L+1),sizeof(uint));
     if (A == NULL)
         error(perror,"calloc");
+    #pragma omp target enter data map(alloc: A[:(len_t+1)*(L+1)])
 
     MPI_Request request = MPI_REQUEST_NULL;
     // time[5] += MPI_Wtime();
@@ -177,9 +214,12 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
             MPIT_Recv(&A(ofs,0),width,MPI_UNSIGNED,rank-1,0,MPI_COMM_WORLD,
                       MPI_STATUS_IGNORE);
 
+        #pragma omp target update to(A[:(len_t+1)*(L+1)])
         // time[1] +=
-        fill_block_omp(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
-        // fill_block(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
+        // fill_block_omp(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        fill_block(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        // fill_block_cpu(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
+        #pragma omp target update from(A[:(len_t+1)*(L+1)])
 
         if (rank != size-1) {
             if (request != MPI_REQUEST_NULL)

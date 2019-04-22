@@ -71,7 +71,7 @@ int main(int argc, char const *argv[])
 
 	for (int i = 0; i <= len_q; ++i) {
 		for (int j = 0; j <= len_t; ++j)
-			printf("%d ", A[i*(len_t+1)+j]);
+			printf("%2d ", A[i*(len_t+1)+j]);
 		putchar('\n');
 	}
 

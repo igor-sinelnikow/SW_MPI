@@ -7,6 +7,10 @@ generate
 
 prepare
 
-simmtx
+simmtx_mpi
+
+simmtx_omp
+
+simmtx_gpu
 
 results/
