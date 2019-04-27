@@ -20,7 +20,6 @@ for (( i = 1; i <= 3; i++ )); do
                 l=`bjobs 2> /dev/null | wc -l`
             done
             bsub -n ${p} -a "p8aff(${t},${t},${t},${task_dist})" -R "select[(maxmem==256G) && (type==any)] same[nthreads]" -env "all, OMP_DISPLAY_ENV=FALSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" ${queue} -e results/${exec}.${len1}x${len2}-p${p}-t${t}.%J.txt -J "SW_MPI" mpiexec ./${exec} ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2
-            sleep 1
         done
     done
 
@@ -31,19 +30,19 @@ for (( i = 1; i <= 3; i++ )); do
             sleep 7
             l=`bjobs 2> /dev/null | wc -l`
         done
-        bsub -n ${dev} -gpu "num=${dev}:mode=exclusive_process" -R "select[(maxmem==256G) && (type==any)]" ${queue} -e results/${exec}.${len1}x${len2}-p${dev}-dev${dev}.%J.txt -J "SW_GPU" mpiexec ./${exec} ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2
-        sleep 1
+        p=${dev}
+        bsub -n ${p} -gpu "num=${dev}:mode=exclusive_process" -R "select[(maxmem==256G) && (type==any)]" ${queue} -e results/${exec}.${len1}x${len2}-p${p}-dev${dev}.%J.txt -J "SW_GPU" mpiexec ./${exec} ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2
     done
 done
 
 exec=simmtx_gpu
 dev=2
-for (( i = 4; i <= 8; i++ )); do
+p=${dev}
+for (( i = 4; i <= 10; i++ )); do
     l=`bjobs 2> /dev/null | wc -l`
     while (( l-1 >= limit )); do
         sleep 7
         l=`bjobs 2> /dev/null | wc -l`
     done
-    bsub -n ${dev} -gpu "num=${dev}:mode=exclusive_process" -R "select[(maxmem==256G) && (type==any)]" ${queue} -e results/${exec}.${len1}x${len2}-p${dev}-dev${dev}.%J.txt -J "SW_GPU" mpiexec ./${exec} ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2
-    sleep 1
+    bsub -n ${p} -gpu "num=${dev}:mode=exclusive_process" -R "select[(maxmem==256G) && (type==any)]" ${queue} -e results/${exec}.${len1}x${len2}-p${p}-dev${dev}.%J.txt -J "SW_GPU" mpiexec ./${exec} ../data/${len1}.target ${len1} ../data/${len2}.query ${len2} 2 -1 -2
 done
