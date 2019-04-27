@@ -31,14 +31,21 @@ int main(int argc, char *argv[])
         error(print_usage,argv[0]);
 
     const int ndev = omp_get_num_devices();
-    omp_set_default_device(rank % ndev);
 
     if (rank == 0) {
         int nthreads;
         #pragma omp parallel
             nthreads = omp_get_num_threads();
-        printf("size = %d, nthreads = %d, ndevices = %d\n", size, nthreads, ndev);
+        fprintf(stderr, "size = %d, nthreads = %d, ndevices = %d\n",
+                size, nthreads, ndev);
     }
+
+    if (ndev && ndev < size)
+        error(fatal,"The number of devices is less than the number "
+                    "of MPI processes. Hence, some devices "
+                    "will have to be shared between a couple of "
+                    "processes, and it doesn't work. Aborting...");
+    omp_set_default_device(rank % ndev);
 
     const uint len_t = atoi(argv[2]);
     char* t = read_target(argv[1],len_t);
@@ -60,7 +67,8 @@ int main(int argc, char *argv[])
     uint local_max[1] = {0};
     double time[1] = {0.};
     // time[6] = -MPI_Wtime();
-    uint* A = fill_similarity_matrix(local_max,time,t,q,len_t,L,match,mismatch,gap,rank,size);
+    uint* A = fill_similarity_matrix(local_max,time,t,q,len_t,L,
+                                     match,mismatch,gap,rank,size,ndev);
     // time[6] += MPI_Wtime();
     MPI_Barrier(MPI_COMM_WORLD);
 
@@ -117,8 +125,8 @@ int main(int argc, char *argv[])
     }*/
 
     if (rank == 0) {
-        printf("%f\n", max_time);
-        printf("maxValue = %u\n", max_score);
+        fprintf(stderr, "maxValue = %u\n", max_score);
+        fprintf(stderr, "%f\n", max_time);
     }
 
     if (argc > 8)

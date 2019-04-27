@@ -20,7 +20,7 @@ char* read_query(CONST char* name, uint L);
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              uint len_t, uint L, int match, int mismatch,
-                             int gap, int rank, int size);
+                             int gap, int rank, int size, int ndev);
 
 void save_matrix(uint* A, CONST char* name, uint len_t, uint L);
 

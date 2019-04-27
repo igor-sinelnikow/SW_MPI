@@ -17,6 +17,8 @@ PREP := prepare
 
 len1 := 64113
 len2 := 62000
+# len1 := 67106
+# len2 := 64000
 TARGET := ../data/$(len1).target
 QUERY := ../data/$(len2).query
 
@@ -87,12 +89,12 @@ $(QUERY): $(PREP)
 .PHONY: all mpi run offload clean cleanup archive
 
 offload: simmtx_gpu $(TARGET) $(QUERY) # $(ALIGN)
-	bsub -n $(mpi_tasks) $(gpu) -R "select[(maxmem==256G) && (type==any)]" $(queue) -o $<.$(id)-dev$(dev).%J.out -e $<.$(id)-dev$(dev).%J.err -J "SW_GPU" mpiexec ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
+	bsub -n $(mpi_tasks) $(gpu) -R "select[(maxmem==256G) && (type==any)]" $(queue) -o $<.$(id)-dev$(dev).%J.out -e $<.$(id)-dev$(dev).%J.txt -J "SW_GPU" mpiexec ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
 # 	mpirun -np $(mpi_tasks) ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
 # 	./$(ALIGN) ../data/sim.mtx $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
 
 run: simmtx_omp $(TARGET) $(QUERY) # $(ALIGN)
-	bsub -n $(mpi_tasks) $(esub) -R "select[(maxmem==256G) && (type==any)] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.$(id)-t$(num_threads_per_task).%J.out -e $<.$(id)-t$(num_threads_per_task).%J.err -J "SW_MPI" mpiexec ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
+	bsub -n $(mpi_tasks) $(esub) -R "select[(maxmem==256G) && (type==any)] same[nthreads]" -env "all, OMP_DISPLAY_ENV=VERBOSE, OMP_DYNAMIC=FALSE, OMP_SCHEDULE=STATIC" $(queue) -o $<.$(id)-t$(num_threads_per_task).%J.out -e $<.$(id)-t$(num_threads_per_task).%J.txt -J "SW_MPI" mpiexec ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2
 # 	-W 00:01
 # 	OMP_DYNAMIC=FALSE OMP_SCHEDULE=STATIC XLSMPOPTS=procs="`t_map $(num_threads_per_task) $(mpi_tasks) 1 0`" mpirun -np $(mpi_tasks) ./$< $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2 ../data/sim.mtx
 # 	./$(ALIGN) ../data/sim.mtx $(TARGET) $(len1) $(QUERY) $(len2) 2 -1 -2

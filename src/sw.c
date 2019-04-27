@@ -100,7 +100,7 @@ static int row(uint d, uint e, uint width, uint height)
     return y + e;
 }
 
-/*static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
+static double fill_block_omp(uint local_max[], uint* A, char* t, char* q,
                              uint len_t, uint height, uint offset, uint width,
                              int match, int mismatch, int gap)
 {
@@ -131,11 +131,11 @@ static int row(uint d, uint e, uint width, uint height)
         }
     }
     return (time += MPI_Wtime());
-}*/
+}
 
-static double fill_block(uint local_max[], uint* A, char* t, char* q,
-                         uint len_t, uint height, uint offset, uint width,
-                         int match, int mismatch, int gap)
+static double fill_block_gpu(uint local_max[], uint* A, char* t, char* q,
+                             uint len_t, uint height, uint offset, uint width,
+                             int match, int mismatch, int gap)
 {
     int up, diag, left;
     int i, j;
@@ -193,7 +193,7 @@ static double fill_block(uint local_max[], uint* A, char* t, char* q,
 
 uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
                              uint len_t, uint L, int match, int mismatch,
-                             int gap, int rank, int size)
+                             int gap, int rank, int size, int ndev)
 {
     // time[5] = -MPI_Wtime();
     const uint N = len_t/L, L_last = len_t%L;
@@ -216,8 +216,10 @@ uint* fill_similarity_matrix(uint local_max[], double time[], char* t, char* q,
 
         #pragma omp target update to(A[:(len_t+1)*(L+1)])
         // time[1] +=
-        // fill_block_omp(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
-        fill_block(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        if (ndev)
+            fill_block_gpu(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
+        else
+            fill_block_omp(local_max,A,t,q,len_t,L,ofs-1,width,match,mismatch,gap);
         // fill_block_cpu(local_max,A,t,q,len_t,L,ofs,width,match,mismatch,gap);
         #pragma omp target update from(A[:(len_t+1)*(L+1)])
 
